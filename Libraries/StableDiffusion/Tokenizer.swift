@@ -36,7 +36,7 @@ struct Bigram: Hashable {
 class CLIPTokenizer {
 
     let pattern =
-        /<\|startoftext\|>|<\|endoftext\|>|'s|'t|'re|'ve|'m|'ll|'d|[\p{L}]+|[\p{N}]|[^\s\p{L}\p{N}]+/
+        #"<\|startoftext\|>|<\|endoftext\|>|'s|'t|'re|'ve|'m|'ll|'d|[\p{L}]+|[\p{N}]|[^\s\p{L}\p{N}]+"#
     let bpeRanks: [Bigram: Int]
     let vocabulary: [String: Int]
 
@@ -117,17 +117,22 @@ class CLIPTokenizer {
     }
 
     public func tokenize(text: String) -> [Int32] {
-        // Lower case cleanup and split according to self.pat. Hugging Face does
-        // a much more thorough job here but this should suffice for 95% of
-        // cases.
+        // Lower case cleanup and split using NSRegularExpression for compatibility with macOS 13.3.
+        let clean = text.lowercased().replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
 
-        let clean = text.lowercased().replacing(/\s+/, with: " ")
-        let tokens = clean.matches(of: pattern).map { $0.description }
+        // Use NSRegularExpression to find matches of the pattern in the clean text.
+        let regex = try! NSRegularExpression(pattern: pattern) // Ensure that 'pattern' is a valid regex string
+        let range = NSRange(clean.startIndex..<clean.endIndex, in: clean)
 
-        // Split the tokens according to the byte-pair merge file
+        // Find matches and map them to strings
+        let tokens = regex.matches(in: clean, options: [], range: range).map {
+            String(clean[Range($0.range, in: clean)!])
+        }
+
+        // Split the tokens according to the byte-pair merge file.
         let bpeTokens = tokens.flatMap { bpe(text: String($0)) }
 
-        // Map to token ids and return
+        // Map to token ids and return.
         let result = [bosToken] + bpeTokens.compactMap { vocabulary[$0] } + [eosToken]
 
         return result.map { Int32($0) }
